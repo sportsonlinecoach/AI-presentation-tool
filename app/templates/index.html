@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI presentation tool</title>
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --panel2: #1d212c; --border: #2a2f3d;
+    --text: #e6e9ef; --muted: #8a92a6; --accent: #5b8cff; --accent2: #3a6bff;
+    --done: #34d399; --danger: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Hiragino Sans", sans-serif;
+    background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+  header { height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 16px;
+    border-bottom: 1px solid var(--border); background: var(--panel); }
+  .logo { font-weight: 800; color: var(--accent); letter-spacing: -.5px; }
+  .sub { color: var(--muted); font-size: 13px; }
+  #status { margin-left: auto; font-size: 12px; color: var(--muted); }
+  .layout { display: grid; grid-template-columns: 240px 1fr 1.2fr; height: calc(100vh - 48px); }
+  .pane { overflow-y: auto; padding: 14px; border-right: 1px solid var(--border); }
+  .pane:last-child { border-right: none; }
+  .pane h2 { font-size: 12px; text-transform: uppercase; color: var(--muted);
+    letter-spacing: .5px; margin: 0 0 10px; display: flex; align-items: center; }
+  .btn { border: none; border-radius: 8px; padding: 8px 12px; font-size: 13px;
+    cursor: pointer; font-weight: 600; }
+  .btn-primary { background: var(--accent2); color: #fff; }
+  .btn-primary:hover { background: var(--accent); }
+  .btn-secondary { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+  .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .plus { margin-left: auto; width: 24px; height: 24px; border-radius: 6px;
+    background: var(--accent2); color: #fff; font-size: 16px; line-height: 1; }
+  .proj { padding: 9px 10px; border-radius: 8px; cursor: pointer; font-size: 14px;
+    margin-bottom: 4px; border: 1px solid transparent; }
+  .proj:hover { background: var(--panel2); }
+  .proj.active { background: var(--panel2); border-color: var(--accent2); }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
+  textarea#md { width: 100%; height: calc(100vh - 160px); resize: none; background: var(--panel2);
+    color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 12px;
+    font-family: ui-monospace, monospace; font-size: 13px; line-height: 1.6; }
+  .slide-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px; margin-bottom: 14px; }
+  .slide-card img { width: 100%; border-radius: 6px; display: block; background: #000; }
+  .slide-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 13px; }
+  .slide-no { background: var(--accent2); color: #fff; border-radius: 5px; padding: 1px 7px; font-size: 12px; }
+  .slide-title { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fix-row { display: flex; gap: 6px; margin-top: 8px; }
+  .fix-row input { flex: 1; background: var(--panel); border: 1px solid var(--border);
+    color: var(--text); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+  .placeholder { color: var(--muted); text-align: center; padding: 40px 12px; font-size: 13px; }
+  .empty-img { aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center;
+    color: var(--muted); border: 1px dashed var(--border); border-radius: 6px; font-size: 12px; }
+  /* modal */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none;
+    align-items: center; justify-content: center; z-index: 50; }
+  .overlay.show { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    width: 560px; max-width: 92vw; max-height: 88vh; display: flex; flex-direction: column; }
+  .modal-head { padding: 14px 18px; border-bottom: 1px solid var(--border); font-weight: 700; }
+  .modal-body { padding: 18px; overflow-y: auto; }
+  .modal-foot { padding: 12px 18px; border-top: 1px solid var(--border);
+    display: flex; justify-content: flex-end; gap: 8px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; }
+  .field input, .field textarea, .field select { width: 100%; background: var(--panel2);
+    border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 9px;
+    font-size: 13px; font-family: inherit; }
+  .field textarea { min-height: 120px; resize: vertical; font-family: ui-monospace, monospace; }
+  .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .spin { display: inline-block; width: 13px; height: 13px; border: 2px solid var(--muted);
+    border-top-color: transparent; border-radius: 50%; animation: s .7s linear infinite; vertical-align: -2px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<header>
+  <span class="logo">AI presentation</span>
+  <span class="sub">tool</span>
+  <span id="status">準備完了</span>
+</header>
+
+<div class="layout">
+  <!-- ペイン1: プロジェクト管理 -->
+  <div class="pane" id="pane-projects">
+    <h2>プロジェクト <button class="btn plus" onclick="openCreate()" title="新規作成">+</button></h2>
+    <div id="proj-list"><div class="placeholder">読み込み中…</div></div>
+  </div>
+
+  <!-- ペイン2: 台本編集 -->
+  <div class="pane" id="pane-editor">
+    <h2>台本（Markdown）</h2>
+    <div class="toolbar">
+      <button id="btn-gen" class="btn btn-primary" onclick="generateSlides()" disabled>スライド生成</button>
+      <button id="btn-save" class="btn btn-secondary" onclick="saveMarkdown()" disabled>保存</button>
+      <span class="hint" id="editor-hint">プロジェクトを選択してください</span>
+    </div>
+    <textarea id="md" placeholder="# 見出し1ごとに1スライド&#10;## 見出し2、### 見出し3 も1スライド&#10;- 箇条書きや本文は直近スライドにまとまります" disabled></textarea>
+  </div>
+
+  <!-- ペイン3: プレビュー -->
+  <div class="pane" id="pane-preview">
+    <h2>スライド</h2>
+    <div class="toolbar">
+      <button id="btn-regen-all" class="btn btn-secondary" onclick="regenerateAll()" disabled>一括再生成</button>
+      <button id="btn-pptx" class="btn btn-primary" onclick="buildPptx()" disabled>PPTX 書き出し</button>
+    </div>
+    <div id="slides"><div class="placeholder">「スライド生成」を押すとここに表示されます</div></div>
+  </div>
+</div>
+
+<!-- 新規作成モーダル -->
+<div class="overlay" id="create-modal">
+  <div class="modal">
+    <div class="modal-head">新規プロジェクト</div>
+    <div class="modal-body">
+      <div class="field">
+        <label>プロジェクト名</label>
+        <input id="c-name" placeholder="プロジェクト1">
+      </div>
+      <div class="field">
+        <label>スライドの元になる Markdown</label>
+        <textarea id="c-md" placeholder="# タイトル&#10;## セクション1&#10;- ポイントA&#10;- ポイントB"></textarea>
+      </div>
+      <div class="field">
+        <label>デザインプロンプト（雛形を選んで編集できます）</label>
+        <select id="c-tmpl" onchange="applyTemplate()"></select>
+        <textarea id="c-prompt" style="margin-top:8px;min-height:80px;"></textarea>
+      </div>
+      <div class="field">
+        <label>見本デザイン画像（任意）</label>
+        <input type="file" id="c-ref" accept="image/*">
+        <div class="hint">添付すると、その配色・レイアウトを踏襲して生成します。</div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeCreate()">キャンセル</button>
+      <button class="btn btn-primary" id="c-save" onclick="createProject()">作成</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let current = null;       // 現在のプロジェクト名
+let plan = [];            // 構成案
+let templates = {};
+
+function setStatus(t, busy) {
+  document.getElementById('status').innerHTML = (busy ? '<span class="spin"></span> ' : '') + t;
+}
+function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+  return data;
+}
+
+// ---- プロジェクト一覧 ----
+async function loadProjects() {
+  try {
+    const d = await api('/api/projects');
+    const box = document.getElementById('proj-list');
+    if (d.error) { box.innerHTML = `<div class="placeholder">${escHtml(d.error)}</div>`; return; }
+    if (!d.projects.length) { box.innerHTML = '<div class="placeholder">プロジェクトがありません。<br>＋ で作成してください。</div>'; return; }
+    box.innerHTML = d.projects.map(p =>
+      `<div class="proj ${p===current?'active':''}" onclick="selectProject('${encodeURIComponent(p)}')">${escHtml(p)}</div>`
+    ).join('');
+  } catch (e) { setStatus('一覧取得失敗: ' + e.message); }
+}
+
+async function selectProject(enc) {
+  const name = decodeURIComponent(enc);
+  current = name;
+  setStatus('読み込み中…', true);
+  try {
+    const d = await api('/api/project/' + encodeURIComponent(name));
+    document.getElementById('md').value = d.markdown || '';
+    document.getElementById('md').disabled = false;
+    document.getElementById('btn-gen').disabled = false;
+    document.getElementById('btn-save').disabled = false;
+    document.getElementById('editor-hint').textContent = name;
+    plan = d.plan || [];
+    renderSlides(d.generated || []);
+    document.getElementById('btn-pptx').disabled = !d.pptx_exists && !(d.generated||[]).some(Boolean);
+    document.getElementById('btn-regen-all').disabled = plan.length === 0;
+    setStatus(name);
+    loadProjects();
+  } catch (e) { setStatus('読み込み失敗: ' + e.message); }
+}
+
+// ---- 新規作成 ----
+async function openCreate() {
+  document.getElementById('create-modal').classList.add('show');
+  try {
+    const t = await api('/api/prompt_templates');
+    templates = t.templates;
+    const sel = document.getElementById('c-tmpl');
+    sel.innerHTML = Object.keys(templates).map(k => `<option value="${escHtml(k)}">${escHtml(k)}</option>`).join('');
+    document.getElementById('c-prompt').value = templates[Object.keys(templates)[0]] || t.default;
+    const n = await api('/api/suggest_name');
+    document.getElementById('c-name').placeholder = n.name;
+    document.getElementById('c-name').value = n.name;
+  } catch (e) {}
+}
+function closeCreate() { document.getElementById('create-modal').classList.remove('show'); }
+function applyTemplate() {
+  const k = document.getElementById('c-tmpl').value;
+  document.getElementById('c-prompt').value = templates[k] || '';
+}
+async function createProject() {
+  const name = document.getElementById('c-name').value.trim() || document.getElementById('c-name').placeholder;
+  const markdown = document.getElementById('c-md').value;
+  const prompt = document.getElementById('c-prompt').value;
+  document.getElementById('c-save').disabled = true;
+  setStatus('作成中…', true);
+  try {
+    const d = await api('/api/create_project', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ name, markdown, prompt })
+    });
+    // 見本画像アップロード（任意）
+    const f = document.getElementById('c-ref').files[0];
+    if (f) {
+      const fd = new FormData(); fd.append('project', d.project); fd.append('file', f);
+      await fetch('/api/upload_reference', { method: 'POST', body: fd });
+    }
+    closeCreate();
+    await loadProjects();
+    await selectProject(encodeURIComponent(d.project));
+  } catch (e) { setStatus('作成失敗: ' + e.message); alert(e.message); }
+  finally { document.getElementById('c-save').disabled = false; }
+}
+
+// ---- 保存・生成 ----
+async function saveMarkdown() {
+  if (!current) return;
+  setStatus('保存中…', true);
+  try {
+    await api('/api/save_markdown', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ project: current, markdown: document.getElementById('md').value })
+    });
+    setStatus('保存しました');
+  } catch (e) { setStatus('保存失敗: ' + e.message); }
+}
+
+async function generateSlides() {
+  if (!current) return;
+  setStatus('構成案を作成中…', true);
+  document.getElementById('btn-gen').disabled = true;
+  try {
+    const d = await api('/api/slide_plan', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ project: current, markdown: document.getElementById('md').value })
+    });
+    plan = d.plan;
+    renderSlides(plan.map(() => false));
+    document.getElementById('btn-regen-all').disabled = false;
+    // 各スライドを順に生成
+    for (let i = 0; i < plan.length; i++) {
+      setStatus(`スライド生成中… (${i+1}/${plan.length})`, true);
+      await genOne(i, '');
+    }
+    setStatus('生成完了');
+    document.getElementById('btn-pptx').disabled = false;
+  } catch (e) { setStatus('生成失敗: ' + e.message); alert(e.message); }
+  finally { document.getElementById('btn-gen').disabled = false; }
+}
+
+async function genOne(i, fix) {
+  const img = document.getElementById('img-' + i);
+  if (img) img.outerHTML = `<div class="empty-img" id="img-${i}"><span class="spin"></span></div>`;
+  const d = await api('/api/generate_slide', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ project: current, index: i, fix: fix || '' })
+  });
+  const el = document.getElementById('img-' + i);
+  if (el) el.outerHTML = `<img id="img-${i}" src="${d.image_url}">`;
+}
+
+async function regenOne(i) {
+  const fix = document.getElementById('fix-' + i).value;
+  setStatus(`スライド${i+1} を再生成中…`, true);
+  try { await genOne(i, fix); setStatus('再生成完了'); }
+  catch (e) { setStatus('再生成失敗: ' + e.message); }
+}
+
+async function regenerateAll() {
+  if (!current || !plan.length) return;
+  const fixes = {};
+  for (let i = 0; i < plan.length; i++) {
+    const v = document.getElementById('fix-' + i);
+    if (v && v.value.trim()) fixes[i] = v.value.trim();
+  }
+  setStatus('一括再生成中…', true);
+  document.getElementById('btn-regen-all').disabled = true;
+  try {
+    // 進捗を見せるため1枚ずつ
+    for (let i = 0; i < plan.length; i++) {
+      setStatus(`一括再生成中… (${i+1}/${plan.length})`, true);
+      await genOne(i, fixes[i] || '');
+    }
+    setStatus('一括再生成完了');
+  } catch (e) { setStatus('再生成失敗: ' + e.message); }
+  finally { document.getElementById('btn-regen-all').disabled = false; }
+}
+
+function renderSlides(generated) {
+  const box = document.getElementById('slides');
+  if (!plan.length) { box.innerHTML = '<div class="placeholder">「スライド生成」を押すとここに表示されます</div>'; return; }
+  box.innerHTML = plan.map((s, i) => {
+    const imgInner = generated[i]
+      ? `<img id="img-${i}" src="/api/slide_image?project=${encodeURIComponent(current)}&index=${i}&t=${Date.now()}">`
+      : `<div class="empty-img" id="img-${i}">未生成</div>`;
+    return `<div class="slide-card">
+      <div class="slide-head"><span class="slide-no">${i+1}</span>
+        <span class="slide-title">${escHtml(s.title || '(無題)')}</span></div>
+      ${imgInner}
+      <div class="fix-row">
+        <input id="fix-${i}" placeholder="修正ポイント（例: 文字を大きく / 図を右に）">
+        <button class="btn btn-secondary" onclick="regenOne(${i})">再生成</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function buildPptx() {
+  if (!current) return;
+  setStatus('PPTX 作成中…', true);
+  document.getElementById('btn-pptx').disabled = true;
+  try {
+    const d = await api('/api/build_pptx', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ project: current })
+    });
+    setStatus('PPTX を保存しました');
+    window.location = d.download_url;
+  } catch (e) { setStatus('PPTX失敗: ' + e.message); alert(e.message); }
+  finally { document.getElementById('btn-pptx').disabled = false; }
+}
+
+loadProjects();
+</script>
+</body>
+</html>
