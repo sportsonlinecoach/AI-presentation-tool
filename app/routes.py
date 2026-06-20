@@ -139,6 +139,32 @@ def api_project_detail(project_name: str):
     return jsonify(_project_status(project_name))
 
 
+@bp.route("/api/delete_project", methods=["POST"])
+def api_delete_project():
+    """プロジェクトをアプリ一覧から非表示にする（ソフト削除）。
+
+    ファイル（PNG・PPTX・見本画像など）は OUTPUT_ROOT 内に残したまま、
+    markdown.md を __markdown.md にリネームするだけ。一覧は markdown.md の有無で
+    判定しているため、リネームすれば一覧から消える。__markdown.md を元に戻せば復元可能。
+    """
+    data = request.get_json() or {}
+    name = (data.get("project") or "").strip()
+    if not _valid_folder_name(name):
+        return jsonify({"error": "プロジェクト名が不正です"}), 400
+
+    target = (OUTPUT_ROOT / name).resolve()
+    # OUTPUT_ROOT の直下のみ対象（パストラバーサル防止）
+    if target.parent != OUTPUT_ROOT.resolve() or not target.is_dir():
+        return jsonify({"error": "対象プロジェクトが見つかりません"}), 404
+
+    md = target / slides_svc.MARKDOWN_FILE
+    if not md.exists():
+        return jsonify({"error": "対象プロジェクトが見つかりません"}), 404
+    md.rename(target / f"__{slides_svc.MARKDOWN_FILE}")
+
+    return jsonify({"status": "ok", "deleted": name})
+
+
 @bp.route("/api/save_markdown", methods=["POST"])
 def api_save_markdown():
     """ペイン2の編集内容（Markdown・プロンプト）を保存する。"""

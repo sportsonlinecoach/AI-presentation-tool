@@ -32,10 +32,16 @@
   .btn:disabled { opacity: .5; cursor: not-allowed; }
   .plus { margin-left: auto; width: 24px; height: 24px; border-radius: 6px;
     background: var(--accent2); color: #fff; font-size: 16px; line-height: 1; }
-  .proj { padding: 9px 10px; border-radius: 8px; cursor: pointer; font-size: 14px;
-    margin-bottom: 4px; border: 1px solid transparent; }
+  .proj { display: flex; align-items: center; gap: 6px; padding: 9px 10px; border-radius: 8px;
+    cursor: pointer; font-size: 14px; margin-bottom: 4px; border: 1px solid transparent; }
   .proj:hover { background: var(--panel2); }
   .proj.active { background: var(--panel2); border-color: var(--accent2); }
+  .proj-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .proj-del { flex-shrink: 0; width: 22px; height: 22px; border-radius: 6px; border: none;
+    background: transparent; color: var(--muted); font-size: 14px; line-height: 1; cursor: pointer;
+    opacity: 0; transition: opacity .12s; }
+  .proj:hover .proj-del { opacity: 1; }
+  .proj-del:hover { background: var(--danger); color: #fff; }
   .toolbar { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
   #pane-editor { display: flex; flex-direction: column; }
   textarea#md { width: 100%; flex: 1; min-height: 180px; resize: none; background: var(--panel2);
@@ -185,9 +191,13 @@ async function loadProjects() {
     const box = document.getElementById('proj-list');
     if (d.error) { box.innerHTML = `<div class="placeholder">${escHtml(d.error)}</div>`; return; }
     if (!d.projects.length) { box.innerHTML = '<div class="placeholder">プロジェクトがありません。<br>＋ で作成してください。</div>'; return; }
-    box.innerHTML = d.projects.map(p =>
-      `<div class="proj ${p===current?'active':''}" onclick="selectProject('${encodeURIComponent(p)}')">${escHtml(p)}</div>`
-    ).join('');
+    box.innerHTML = d.projects.map(p => {
+      const enc = encodeURIComponent(p);
+      return `<div class="proj ${p===current?'active':''}" onclick="selectProject('${enc}')">`
+        + `<span class="proj-name">${escHtml(p)}</span>`
+        + `<button class="proj-del" title="削除" onclick="event.stopPropagation(); deleteProject('${enc}')">✕</button>`
+        + `</div>`;
+    }).join('');
   } catch (e) { setStatus('一覧取得失敗: ' + e.message); }
 }
 
@@ -211,6 +221,29 @@ async function selectProject(enc) {
     setStatus(name);
     loadProjects();
   } catch (e) { setStatus('読み込み失敗: ' + e.message); }
+}
+
+async function deleteProject(enc) {
+  const name = decodeURIComponent(enc);
+  if (!confirm(`プロジェクト「${name}」をアプリの一覧から削除します。\n（生成済みの画像・PPTXは出力フォルダにそのまま残ります）\nよろしいですか？`)) return;
+  setStatus('削除中…', true);
+  try {
+    await api('/api/delete_project', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ project: name })
+    });
+    // 開いていたプロジェクトを消した場合はエディタ・プレビューをリセット
+    if (current === name) {
+      current = null; plan = [];
+      const md = document.getElementById('md'); md.value = ''; md.disabled = true;
+      const dp = document.getElementById('design-prompt'); dp.value = ''; dp.disabled = true;
+      document.getElementById('editor-hint').textContent = 'プロジェクトを選択してください';
+      ['btn-gen','btn-save','btn-regen-all','btn-pptx'].forEach(id => document.getElementById(id).disabled = true);
+      document.getElementById('slides').innerHTML = '<div class="placeholder">「スライド生成」を押すとここに表示されます</div>';
+    }
+    setStatus(`「${name}」を削除しました`);
+    loadProjects();
+  } catch (e) { setStatus('削除失敗: ' + e.message); alert(e.message); }
 }
 
 // ---- 新規作成 ----
