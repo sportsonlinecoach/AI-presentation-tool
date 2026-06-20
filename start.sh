@@ -5,12 +5,12 @@
 cd "$(dirname "$0")"
 
 # すでに起動中なら知らせるだけで二重起動しない
-if lsof -ti tcp:5060 >/dev/null 2>&1; then
-    osascript -e 'display notification "すでに起動中です (localhost:5060)" with title "AI presentation tool"'
-    open "http://localhost:5060"
+if lsof -ti tcp:5070 >/dev/null 2>&1; then
+    osascript -e 'display notification "すでに起動中です (localhost:5070)" with title "AI presentation tool"'
+    open "http://localhost:5070"
     exit 0
 fi
 
 # 起動（少し待ってからブラウザを開く）
-( sleep 3 && open "http://localhost:5060" ) &
+( sleep 3 && open "http://localhost:5070" ) &
 .venv/bin/python run.py

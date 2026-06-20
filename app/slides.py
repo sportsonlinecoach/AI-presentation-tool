@@ -21,7 +21,7 @@ import json
 import base64
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter
 from openai import OpenAI
 from pptx import Presentation
 from pptx.util import Inches
@@ -48,6 +48,7 @@ MARKDOWN_FILE = "markdown.md"
 PROMPT_FILE = "_prompt.txt"
 REFERENCE_FILE = "_reference.png"
 PLAN_FILE = "plan.json"
+CONFIG_FILE = "_config.json"
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +56,23 @@ PLAN_FILE = "plan.json"
 # ---------------------------------------------------------------------------
 
 PROMPT_TEMPLATES: dict[str, str] = {
+    "SHI-GYO": (
+        "あなたは最高のプレゼンテーションスライドメーカーです。\n"
+        "参照画像のスライドのテイスト（デザイン・色味）を踏襲して、"
+        "情報発信プロジェクト「Dr.SHI-GYO」に関連するスライドを生成してください。\n"
+        "・文字数はできるだけ減らす（キーワード中心）\n"
+        "・高齢者も見るセミナーなので小さい文字は禁止（引用文献情報のみ小さく）\n"
+        "・少ない文字数・大きな文字で、イラスト・図表・写真も使って直感的に理解させる\n"
+        "【右下にロゴ用スペースを空けるルール・厳守】\n"
+        "・右下の角に、ロゴやワイプを置くための小さな空きスペース"
+        "（背景のまま・文字も図版も置かない／目安は横幅の約15%・高さの約20%）を必ず確保する。\n"
+        "・カードや図版・本文は、その右下の角を避けて配置する。"
+        "右下にカードが重なる場合は、最後の項目を左に寄せる・カードを一段上げる・"
+        "下段を3列ではなく左寄せにするなどして、右下の角だけは背景を残すこと。\n"
+        "・ただし空けるのは右下の角だけ。右端を縦一列にまるごと空けたり、"
+        "画面の右3〜4割を縦長の空白にするのは絶対に禁止。\n"
+        "・左・中央・上部、そして右上〜右中央は画面いっぱいに使い、横幅を端近くまで使い切ること。"
+    ),
     "シンプル": (
         "クリーンでミニマルなビジネスプレゼンのスライド。"
         "白基調の背景、余白を広めに取り、見出しを大きく、本文は読みやすい階層で配置。"
@@ -76,7 +94,47 @@ PROMPT_TEMPLATES: dict[str, str] = {
     ),
 }
 
-DEFAULT_PROMPT = PROMPT_TEMPLATES["シンプル"]
+DEFAULT_PROMPT = PROMPT_TEMPLATES["SHI-GYO"]
+
+# テンプレートに同梱する「デフォルト見本デザイン画像」。
+# キーは PROMPT_TEMPLATES のテンプレート名、値は app/template_assets/ 内のファイル名。
+# 新規作成時に見本画像が未アップロードなら、ここで指定した画像が初期見本になる。
+# （プロジェクトで見本画像をアップロードすると、そのプロジェクトの見本に差し替わる）
+TEMPLATE_ASSETS_DIR = Path(__file__).resolve().parent / "template_assets"
+
+TEMPLATE_REFERENCES: dict[str, str] = {
+    "SHI-GYO": "shigyo_reference.png",
+}
+
+# テンプレートごとの「右下ネガティブスペース（ロゴ/ワイプ用の余白）」設定。
+# プロンプトで余白を空けさせたうえで、生成後に下記の矩形を背景色で軽く均して
+# きれいな余白に仕上げる（端のフレームは inset 分だけ残す）。
+#   right / bottom : 画像の右端・下端からの割合（空ける領域の幅・高さ）
+#   inset          : 外周フレームを残すための内側マージン（幅に対する割合）
+#   feather        : 合成マスクのぼかし量（幅に対する割合）
+TEMPLATE_NEGATIVE_SPACE: dict[str, dict] = {
+    "SHI-GYO": {"right": 0.15, "bottom": 0.20, "inset": 0.014, "feather": 0.018},
+}
+
+
+def template_reference_path(template_name: str) -> Path | None:
+    """テンプレートに同梱されたデフォルト見本画像のパスを返す（無ければ None）。"""
+    fname = TEMPLATE_REFERENCES.get(template_name or "")
+    if not fname:
+        return None
+    p = TEMPLATE_ASSETS_DIR / fname
+    return p if p.exists() else None
+
+
+def templates_with_reference() -> list[str]:
+    """デフォルト見本画像を持つテンプレート名の一覧。"""
+    return [name for name in TEMPLATE_REFERENCES if template_reference_path(name)]
+
+
+def template_negative_space(template_name: str) -> dict | None:
+    """テンプレートに定義された右下ネガティブスペース設定を返す（無ければ None）。"""
+    ns = TEMPLATE_NEGATIVE_SPACE.get(template_name or "")
+    return dict(ns) if ns else None
 
 
 # ---------------------------------------------------------------------------
@@ -99,6 +157,59 @@ def prompt_path(project_name: str) -> Path:
 
 def reference_path(project_name: str) -> Path:
     return project_dir(project_name) / REFERENCE_FILE
+
+
+def apply_template_reference(project_name: str, template_name: str) -> bool:
+    """テンプレートのデフォルト見本画像をプロジェクトの _reference.png に設定する。
+
+    既にプロジェクト独自の見本画像がある場合は上書きしない。
+    コピーした場合は True、対象が無い／既存ありの場合は False を返す。
+    """
+    src = template_reference_path(template_name)
+    if src is None:
+        return False
+    dst = reference_path(project_name)
+    if dst.exists():
+        return False
+    import shutil
+
+    project_dir(project_name)
+    shutil.copyfile(src, dst)
+    return True
+
+
+def config_path(project_name: str) -> Path:
+    return project_dir(project_name) / CONFIG_FILE
+
+
+def read_project_config(project_name: str) -> dict:
+    p = config_path(project_name)
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def write_project_config(project_name: str, config: dict) -> None:
+    config_path(project_name).write_text(
+        json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+
+
+def init_project_from_template(project_name: str, template_name: str) -> dict:
+    """テンプレート選択時の初期化（見本画像コピー＋設定保存）をまとめて行う。
+
+    返り値: {"applied_reference": bool, "negative_space": dict | None}
+    """
+    applied_reference = apply_template_reference(project_name, template_name)
+    ns = template_negative_space(template_name)
+    if ns:
+        cfg = read_project_config(project_name)
+        cfg["negative_space"] = ns
+        write_project_config(project_name, cfg)
+    return {"applied_reference": applied_reference, "negative_space": ns}
 
 
 def plan_path(project_name: str) -> Path:
@@ -244,6 +355,51 @@ def _fit_to_16x9(img: Image.Image) -> Image.Image:
     return img.resize((TARGET_W, TARGET_H), Image.LANCZOS)
 
 
+def _sample_background_color(img: Image.Image) -> tuple[int, int, int]:
+    """画像の端付近（上辺・左右の内側）から背景色を推定する。"""
+    w, h = img.size
+
+    def avg(x0: float, y0: float, x1: float, y1: float) -> tuple[int, int, int]:
+        box = (int(x0 * w), int(y0 * h), int(x1 * w), int(y1 * h))
+        px = img.crop(box).resize((1, 1), Image.LANCZOS).getpixel((0, 0))
+        return px[:3]
+
+    samples = [
+        avg(0.10, 0.02, 0.90, 0.05),   # 上辺の内側
+        avg(0.015, 0.10, 0.03, 0.90),  # 左辺の内側
+        avg(0.97, 0.10, 0.985, 0.90),  # 右辺の内側
+    ]
+    return tuple(sum(s[i] for s in samples) // len(samples) for i in range(3))
+
+
+def _apply_negative_space(img: Image.Image, ns: dict) -> Image.Image:
+    """右下のネガティブスペースを背景色で軽く均し、きれいな余白に仕上げる。
+
+    外周フレームは inset 分だけ残し、内側の矩形だけをぼかしマスクで合成する。
+    """
+    img = img.convert("RGB")
+    w, h = img.size
+    right = float(ns.get("right", 0.15))
+    bottom = float(ns.get("bottom", 0.20))
+    inset = float(ns.get("inset", 0.014))
+    feather = float(ns.get("feather", 0.018))
+    color = tuple(ns["color"]) if ns.get("color") else _sample_background_color(img)
+
+    margin = int(inset * w)
+    x0 = int((1 - right) * w)
+    y0 = int((1 - bottom) * h)
+    x1 = w - margin
+    y1 = h - margin
+    radius = int(min(w, h) * 0.016)
+
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([x0, y0, x1, y1], radius=radius, fill=255)
+    mask = mask.filter(ImageFilter.GaussianBlur(max(1, int(feather * w))))
+
+    fill = Image.new("RGB", (w, h), color)
+    return Image.composite(fill, img, mask)
+
+
 def generate_slide_image(
     project_name: str,
     index: int,
@@ -280,6 +436,11 @@ def generate_slide_image(
 
     img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
     img = _fit_to_16x9(img)
+
+    # プロジェクト設定に右下ネガティブスペースがあれば後処理で均す
+    ns = read_project_config(project_name).get("negative_space")
+    if ns:
+        img = _apply_negative_space(img, ns)
 
     out = slide_png_path(project_name, index)
     img.save(out, "PNG")

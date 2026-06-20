@@ -43,7 +43,7 @@ cp .env.example .env   # OPENAI_API_KEY などを設定
 .venv/bin/python run.py
 ```
 
-→ http://localhost:5060
+→ http://localhost:5070
 
 出力は `OUTPUT_ROOT/<プロジェクト名>/` に `slide_NN.png` と `<プロジェクト名>.pptx` が保存される。
 

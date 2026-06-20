@@ -37,9 +37,20 @@
   .proj:hover { background: var(--panel2); }
   .proj.active { background: var(--panel2); border-color: var(--accent2); }
   .toolbar { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
-  textarea#md { width: 100%; height: calc(100vh - 160px); resize: none; background: var(--panel2);
+  #pane-editor { display: flex; flex-direction: column; }
+  textarea#md { width: 100%; flex: 1; min-height: 180px; resize: none; background: var(--panel2);
     color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 12px;
     font-family: ui-monospace, monospace; font-size: 13px; line-height: 1.6; }
+  details.prompt-box { margin-bottom: 10px; background: var(--panel2);
+    border: 1px solid var(--border); border-radius: 8px; }
+  details.prompt-box > summary { cursor: pointer; padding: 8px 10px; font-size: 12px;
+    color: var(--muted); list-style: none; user-select: none; }
+  details.prompt-box > summary::-webkit-details-marker { display: none; }
+  details.prompt-box > summary::before { content: '▸ '; }
+  details.prompt-box[open] > summary::before { content: '▾ '; }
+  textarea#design-prompt { width: 100%; height: 120px; resize: vertical; box-sizing: border-box;
+    background: var(--panel); color: var(--text); border: none; border-top: 1px solid var(--border);
+    border-radius: 0 0 8px 8px; padding: 10px; font-size: 12px; line-height: 1.5; }
   .slide-card { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
     padding: 10px; margin-bottom: 14px; }
   .slide-card img { width: 100%; border-radius: 6px; display: block; background: #000; }
@@ -96,6 +107,10 @@
       <button id="btn-save" class="btn btn-secondary" onclick="saveMarkdown()" disabled>保存</button>
       <span class="hint" id="editor-hint">プロジェクトを選択してください</span>
     </div>
+    <details class="prompt-box">
+      <summary>デザインプロンプト（配色・トーンの指示）</summary>
+      <textarea id="design-prompt" placeholder="プロジェクトを選択すると表示されます" disabled></textarea>
+    </details>
     <textarea id="md" placeholder="# 見出し1ごとに1スライド&#10;## 見出し2、### 見出し3 も1スライド&#10;- 箇条書きや本文は直近スライドにまとまります" disabled></textarea>
   </div>
 
@@ -130,6 +145,10 @@
       </div>
       <div class="field">
         <label>見本デザイン画像（任意）</label>
+        <div id="c-ref-default" style="display:none; margin-bottom:8px;">
+          <img id="c-ref-default-img" style="width:100%; border-radius:8px; border:1px solid var(--border); display:block;">
+          <div class="hint">このテンプレートの既定の見本画像です。下で画像を選ぶと差し替わります。</div>
+        </div>
         <input type="file" id="c-ref" accept="image/*">
         <div class="hint">添付すると、その配色・レイアウトを踏襲して生成します。</div>
       </div>
@@ -145,6 +164,7 @@
 let current = null;       // 現在のプロジェクト名
 let plan = [];            // 構成案
 let templates = {};
+let templatesWithRef = []; // デフォルト見本画像を持つテンプレート名
 
 function setStatus(t, busy) {
   document.getElementById('status').innerHTML = (busy ? '<span class="spin"></span> ' : '') + t;
@@ -179,6 +199,8 @@ async function selectProject(enc) {
     const d = await api('/api/project/' + encodeURIComponent(name));
     document.getElementById('md').value = d.markdown || '';
     document.getElementById('md').disabled = false;
+    document.getElementById('design-prompt').value = d.prompt || '';
+    document.getElementById('design-prompt').disabled = false;
     document.getElementById('btn-gen').disabled = false;
     document.getElementById('btn-save').disabled = false;
     document.getElementById('editor-hint').textContent = name;
@@ -197,9 +219,14 @@ async function openCreate() {
   try {
     const t = await api('/api/prompt_templates');
     templates = t.templates;
+    templatesWithRef = t.with_reference || [];
     const sel = document.getElementById('c-tmpl');
     sel.innerHTML = Object.keys(templates).map(k => `<option value="${escHtml(k)}">${escHtml(k)}</option>`).join('');
-    document.getElementById('c-prompt').value = templates[Object.keys(templates)[0]] || t.default;
+    const first = Object.keys(templates)[0];
+    sel.value = first;
+    document.getElementById('c-prompt').value = templates[first] || t.default;
+    document.getElementById('c-ref').value = '';
+    updateRefPreview();
     const n = await api('/api/suggest_name');
     document.getElementById('c-name').placeholder = n.name;
     document.getElementById('c-name').value = n.name;
@@ -209,17 +236,31 @@ function closeCreate() { document.getElementById('create-modal').classList.remov
 function applyTemplate() {
   const k = document.getElementById('c-tmpl').value;
   document.getElementById('c-prompt').value = templates[k] || '';
+  updateRefPreview();
+}
+function updateRefPreview() {
+  const k = document.getElementById('c-tmpl').value;
+  const box = document.getElementById('c-ref-default');
+  const img = document.getElementById('c-ref-default-img');
+  if (templatesWithRef.includes(k)) {
+    img.src = '/api/template_reference?template=' + encodeURIComponent(k) + '&t=' + Date.now();
+    box.style.display = 'block';
+  } else {
+    box.style.display = 'none';
+    img.removeAttribute('src');
+  }
 }
 async function createProject() {
   const name = document.getElementById('c-name').value.trim() || document.getElementById('c-name').placeholder;
   const markdown = document.getElementById('c-md').value;
   const prompt = document.getElementById('c-prompt').value;
+  const template = document.getElementById('c-tmpl').value;
   document.getElementById('c-save').disabled = true;
   setStatus('作成中…', true);
   try {
     const d = await api('/api/create_project', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ name, markdown, prompt })
+      body: JSON.stringify({ name, markdown, prompt, template })
     });
     // 見本画像アップロード（任意）
     const f = document.getElementById('c-ref').files[0];
@@ -239,12 +280,21 @@ async function saveMarkdown() {
   if (!current) return;
   setStatus('保存中…', true);
   try {
-    await api('/api/save_markdown', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ project: current, markdown: document.getElementById('md').value })
-    });
+    await saveEditor();
     setStatus('保存しました');
   } catch (e) { setStatus('保存失敗: ' + e.message); }
+}
+
+// Markdown とデザインプロンプトをまとめて保存する
+async function saveEditor() {
+  await api('/api/save_markdown', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      project: current,
+      markdown: document.getElementById('md').value,
+      prompt: document.getElementById('design-prompt').value,
+    })
+  });
 }
 
 async function generateSlides() {
@@ -252,6 +302,8 @@ async function generateSlides() {
   setStatus('構成案を作成中…', true);
   document.getElementById('btn-gen').disabled = true;
   try {
+    // 編集中の Markdown・デザインプロンプトを保存してから生成
+    await saveEditor();
     const d = await api('/api/slide_plan', {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify({ project: current, markdown: document.getElementById('md').value })
@@ -284,7 +336,7 @@ async function genOne(i, fix) {
 async function regenOne(i) {
   const fix = document.getElementById('fix-' + i).value;
   setStatus(`スライド${i+1} を再生成中…`, true);
-  try { await genOne(i, fix); setStatus('再生成完了'); }
+  try { await saveEditor(); await genOne(i, fix); setStatus('再生成完了'); }
   catch (e) { setStatus('再生成失敗: ' + e.message); }
 }
 
@@ -298,6 +350,8 @@ async function regenerateAll() {
   setStatus('一括再生成中…', true);
   document.getElementById('btn-regen-all').disabled = true;
   try {
+    // 編集中のデザインプロンプトを反映してから再生成
+    await saveEditor();
     // 進捗を見せるため1枚ずつ
     for (let i = 0; i < plan.length; i++) {
       setStatus(`一括再生成中… (${i+1}/${plan.length})`, true);

@@ -84,7 +84,19 @@ def api_prompt_templates():
     return jsonify({
         "templates": slides_svc.PROMPT_TEMPLATES,
         "default": slides_svc.DEFAULT_PROMPT,
+        # デフォルト見本画像を持つテンプレート名（フロントでプレビュー表示に使う）
+        "with_reference": slides_svc.templates_with_reference(),
     })
+
+
+@bp.route("/api/template_reference")
+def api_template_reference():
+    """テンプレートに同梱されたデフォルト見本画像を返す（プレビュー用）。"""
+    template = request.args.get("template")
+    p = slides_svc.template_reference_path(template or "")
+    if p is None:
+        return jsonify({"error": "not found"}), 404
+    return send_file(str(p), mimetype="image/png")
 
 
 @bp.route("/api/suggest_name")
@@ -105,12 +117,21 @@ def api_create_project():
 
     markdown = data.get("markdown", "") or ""
     prompt = (data.get("prompt") or "").strip() or slides_svc.DEFAULT_PROMPT
+    template = (data.get("template") or "").strip()
 
     slides_svc.project_dir(folder)
     slides_svc.markdown_path(folder).write_text(markdown, encoding="utf-8")
     slides_svc.prompt_path(folder).write_text(prompt, encoding="utf-8")
 
-    return jsonify({"status": "ok", "project": folder})
+    # テンプレートの初期化（見本画像コピー＋右下ネガティブスペース設定の保存）。
+    # 見本画像はこの後アップロードされれば upload_reference 側で上書きされる。
+    init = slides_svc.init_project_from_template(folder, template)
+
+    return jsonify({
+        "status": "ok",
+        "project": folder,
+        "applied_template_reference": init["applied_reference"],
+    })
 
 
 @bp.route("/api/project/<project_name>")
