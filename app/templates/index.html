@@ -318,6 +318,28 @@ async function saveMarkdown() {
   } catch (e) { setStatus('保存失敗: ' + e.message); }
 }
 
+// スライド生成の同時実行数（大きすぎるとAPIのレート制限に当たりやすい）
+const GEN_CONCURRENCY = 3;
+
+// indices を最大 concurrency 本のワーカーで並列処理する。
+// 各完了ごとに onProgress(done, total) を呼ぶ。失敗は配列で集約して返す。
+async function runPool(indices, worker, concurrency, onProgress) {
+  let cursor = 0, done = 0;
+  const errors = [];
+  async function runner() {
+    while (cursor < indices.length) {
+      const i = indices[cursor++];
+      try { await worker(i); }
+      catch (e) { errors.push({ index: i, message: e.message }); }
+      done++;
+      if (onProgress) onProgress(done, indices.length);
+    }
+  }
+  const workers = Array.from({ length: Math.min(concurrency, indices.length) }, runner);
+  await Promise.all(workers);
+  return errors;
+}
+
 // Markdown とデザインプロンプトをまとめて保存する
 async function saveEditor() {
   await api('/api/save_markdown', {
@@ -344,15 +366,25 @@ async function generateSlides() {
     plan = d.plan;
     renderSlides(plan.map(() => false));
     document.getElementById('btn-regen-all').disabled = false;
-    // 各スライドを順に生成
-    for (let i = 0; i < plan.length; i++) {
-      setStatus(`スライド生成中… (${i+1}/${plan.length})`, true);
-      await genOne(i, '');
-    }
-    setStatus('生成完了');
+    // 各スライドを並列生成（同時実行数を制限）
+    const idxs = plan.map((_, i) => i);
+    const errors = await runPool(idxs, (i) => genOne(i, ''), GEN_CONCURRENCY,
+      (done, total) => setStatus(`スライド生成中… (${done}/${total})`, true));
+    reportGenResult(errors);
     document.getElementById('btn-pptx').disabled = false;
   } catch (e) { setStatus('生成失敗: ' + e.message); alert(e.message); }
   finally { document.getElementById('btn-gen').disabled = false; }
+}
+
+// 並列生成の結果をまとめて知らせる
+function reportGenResult(errors, label = '生成') {
+  if (errors && errors.length) {
+    setStatus(`${label}完了（${errors.length}件失敗）`);
+    alert(`一部のスライド${label}に失敗しました:\n`
+      + errors.map(e => `#${e.index + 1}: ${e.message}`).join('\n'));
+  } else {
+    setStatus(`${label}完了`);
+  }
 }
 
 async function genOne(i, fix) {
@@ -385,12 +417,11 @@ async function regenerateAll() {
   try {
     // 編集中のデザインプロンプトを反映してから再生成
     await saveEditor();
-    // 進捗を見せるため1枚ずつ
-    for (let i = 0; i < plan.length; i++) {
-      setStatus(`一括再生成中… (${i+1}/${plan.length})`, true);
-      await genOne(i, fixes[i] || '');
-    }
-    setStatus('一括再生成完了');
+    // 並列で再生成（同時実行数を制限）
+    const idxs = plan.map((_, i) => i);
+    const errors = await runPool(idxs, (i) => genOne(i, fixes[i] || ''), GEN_CONCURRENCY,
+      (done, total) => setStatus(`一括再生成中… (${done}/${total})`, true));
+    reportGenResult(errors, '一括再生成');
   } catch (e) { setStatus('再生成失敗: ' + e.message); }
   finally { document.getElementById('btn-regen-all').disabled = false; }
 }
