@@ -43,6 +43,9 @@ SLIDE_IMAGE_MODEL = os.environ.get("SLIDE_IMAGE_MODEL", "gpt-image-2")
 GEN_SIZE = "1536x1024"
 TARGET_W, TARGET_H = 1536, 864  # 16:9
 
+# 1スライドに追加できる素材画像の上限
+MAX_MATERIALS_PER_SLIDE = 4
+
 # プロジェクト内の固定ファイル名
 MARKDOWN_FILE = "markdown.md"
 PROMPT_FILE = "_prompt.txt"
@@ -220,6 +223,62 @@ def slide_png_path(project_name: str, index: int) -> Path:
     return project_dir(project_name) / f"slide_{index:02d}.png"
 
 
+# ---------------------------------------------------------------------------
+# 素材画像（スライドごとにユーザーが貼り込む画像）
+# ---------------------------------------------------------------------------
+
+def material_path(project_name: str, index: int, k: int) -> Path:
+    return project_dir(project_name) / f"slide_{index:02d}_mat_{k:02d}.png"
+
+
+def list_material_indexes(project_name: str, index: int) -> list[int]:
+    """スライド index に存在する素材画像の k（ソート済み）を返す。"""
+    d = OUTPUT_ROOT / project_name
+    if not d.exists():
+        return []
+    prefix = f"slide_{index:02d}_mat_"
+    ks: list[int] = []
+    for p in d.iterdir():
+        if not p.is_file() or not p.name.startswith(prefix) or not p.name.endswith(".png"):
+            continue
+        stem = p.name[len(prefix):-len(".png")]
+        if stem.isdigit():
+            ks.append(int(stem))
+    return sorted(ks)
+
+
+def list_material_paths(project_name: str, index: int) -> list[Path]:
+    """スライド index の素材画像パス（k 昇順）を返す。"""
+    return [material_path(project_name, index, k) for k in list_material_indexes(project_name, index)]
+
+
+def next_material_index(project_name: str, index: int) -> int:
+    ks = list_material_indexes(project_name, index)
+    k = 0
+    existing = set(ks)
+    while k in existing:
+        k += 1
+    return k
+
+
+def save_material(project_name: str, index: int, file_stream) -> int:
+    """素材画像を PNG（透過保持）で保存し、割り当てた k を返す。"""
+    img = Image.open(file_stream)
+    img = img.convert("RGBA") if img.mode in ("RGBA", "LA", "P") else img.convert("RGB")
+    project_dir(project_name)
+    k = next_material_index(project_name, index)
+    img.save(material_path(project_name, index, k), "PNG")
+    return k
+
+
+def delete_material(project_name: str, index: int, k: int) -> bool:
+    p = material_path(project_name, index, k)
+    if p.exists():
+        p.unlink()
+        return True
+    return False
+
+
 def pptx_path(project_name: str) -> Path:
     return project_dir(project_name) / f"{project_name}.pptx"
 
@@ -311,7 +370,7 @@ def load_plan(project_name: str) -> list[dict]:
 
 def _build_image_prompt(
     project_prompt: str, slide: dict, slide_no: int, total: int, fix: str = "",
-    has_reference: bool = False,
+    has_reference: bool = False, material_count: int = 0,
 ) -> str:
     title = slide.get("title", "")
     lines = slide.get("lines", []) or []
@@ -335,6 +394,24 @@ def _build_image_prompt(
         prompt += (
             "添付した参照画像のデザイン（配色・フォントの雰囲気・レイアウトの方向性）を"
             "踏襲してください。\n"
+        )
+    if material_count > 0:
+        if has_reference:
+            order_note = (
+                "添付画像のうち最初の1枚はデザイン参照用です。"
+                "それ以降に添付された画像が、このスライドに必ず盛り込む「素材画像」です。\n"
+            )
+        else:
+            order_note = "添付した画像が、このスライドに必ず盛り込む「素材画像」です。\n"
+        prompt += (
+            "\n【素材画像・最優先で反映／厳守】\n"
+            + order_note
+            + f"・素材画像は全部で{material_count}枚あります。すべてをスライド内に配置してください。\n"
+            "・素材画像をこのスライドの主役として、大きく中央付近に目立つように配置し、"
+            "その素材画像を中心にレイアウト全体を構成してください。\n"
+            "・素材画像の内容（写真・図・人物など）はできるだけ元の見た目・雰囲気を保ったまま使い、"
+            "見出しや本文はその周囲に添える形にしてください。\n"
+            "・素材画像を極端に小さくしたり、隅に追いやったり、隠したりしないこと。\n"
         )
     prompt += (
         "【余白ルール・重要】見出し・本文・図版など、すべての要素を画像の内側に"
@@ -421,22 +498,36 @@ def generate_slide_image(
     project_prompt: str,
     fix: str = "",
 ) -> Path:
-    """1スライドを GPT Image 2.0 で生成し、16:9 にフィットして保存する。"""
+    """1スライドを GPT Image 2.0 で生成し、16:9 にフィットして保存する。
+
+    参照画像（デザイン見本）とスライドに紐づく素材画像があれば、まとめて
+    images.edit に渡す。素材画像はプロジェクトフォルダから自動で拾うため、
+    単体再生成・一括再生成のどちらでも反映される。
+    """
     client = _client()
     ref = reference_path(project_name)
     has_ref = ref.exists()
+    materials = list_material_paths(project_name, index)
     prompt = _build_image_prompt(
-        project_prompt, slide, index + 1, total, fix=fix, has_reference=has_ref
+        project_prompt, slide, index + 1, total, fix=fix,
+        has_reference=has_ref, material_count=len(materials),
     )
 
-    if has_ref:
-        with open(ref, "rb") as f:
+    # 添付画像の順序: [参照画像(あれば)] + 素材画像。プロンプト側の役割説明と一致させる。
+    image_paths: list[Path] = ([ref] if has_ref else []) + materials
+
+    if image_paths:
+        handles = [open(p, "rb") for p in image_paths]
+        try:
             result = client.images.edit(
                 model=SLIDE_IMAGE_MODEL,
-                image=[f],
+                image=handles,
                 prompt=prompt,
                 size=GEN_SIZE,
             )
+        finally:
+            for h in handles:
+                h.close()
     else:
         result = client.images.generate(
             model=SLIDE_IMAGE_MODEL,

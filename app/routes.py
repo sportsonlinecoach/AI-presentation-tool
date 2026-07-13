@@ -47,6 +47,7 @@ def _next_project_name() -> str:
 def _project_status(project_name: str) -> dict:
     plan = slides_svc.load_plan(project_name)
     generated = [slides_svc.slide_png_path(project_name, i).exists() for i in range(len(plan))]
+    materials = [slides_svc.list_material_indexes(project_name, i) for i in range(len(plan))]
     return {
         "project": project_name,
         "markdown": slides_svc.read_markdown(project_name),
@@ -54,6 +55,7 @@ def _project_status(project_name: str) -> dict:
         "has_reference": slides_svc.reference_path(project_name).exists(),
         "plan": plan,
         "generated": generated,
+        "materials": materials,
         "pptx_exists": slides_svc.pptx_path(project_name).exists(),
     }
 
@@ -204,6 +206,78 @@ def api_reference_image():
     if not project_name:
         return jsonify({"error": "project is required"}), 400
     p = slides_svc.reference_path(project_name)
+    if not p.exists():
+        return jsonify({"error": "not found"}), 404
+    return send_file(str(p), mimetype="image/png")
+
+
+# ---------------------------------------------------------------------------
+# 素材画像（スライドごとにユーザーが貼り込む画像）
+# ---------------------------------------------------------------------------
+
+@bp.route("/api/upload_material", methods=["POST"])
+def api_upload_material():
+    """スライドに紐づく素材画像をアップロードして保存する。"""
+    project_name = request.form.get("project")
+    if not project_name or not _valid_folder_name(project_name):
+        return jsonify({"error": "project is required"}), 400
+    try:
+        index = int(request.form.get("index", ""))
+    except (TypeError, ValueError):
+        return jsonify({"error": "index が不正です"}), 400
+    if index < 0:
+        return jsonify({"error": "index が不正です"}), 400
+
+    if len(slides_svc.list_material_indexes(project_name, index)) >= slides_svc.MAX_MATERIALS_PER_SLIDE:
+        return jsonify({"error": f"素材画像は1スライドあたり最大{slides_svc.MAX_MATERIALS_PER_SLIDE}枚までです"}), 400
+
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"error": "画像ファイルがありません"}), 400
+    try:
+        k = slides_svc.save_material(project_name, index, file.stream)
+    except Exception as e:
+        return jsonify({"error": f"画像として読み込めませんでした: {e}"}), 400
+
+    return jsonify({
+        "status": "ok",
+        "index": index,
+        "mindex": k,
+        "materials": slides_svc.list_material_indexes(project_name, index),
+    })
+
+
+@bp.route("/api/delete_material", methods=["POST"])
+def api_delete_material():
+    """スライドに紐づく素材画像を削除する。"""
+    data = request.get_json() or {}
+    project_name = (data.get("project") or "").strip()
+    if not project_name or not _valid_folder_name(project_name):
+        return jsonify({"error": "project is required"}), 400
+    try:
+        index = int(data.get("index"))
+        k = int(data.get("mindex"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "index / mindex が不正です"}), 400
+    if index < 0 or k < 0:
+        return jsonify({"error": "index / mindex が不正です"}), 400
+
+    slides_svc.delete_material(project_name, index, k)
+    return jsonify({
+        "status": "ok",
+        "index": index,
+        "materials": slides_svc.list_material_indexes(project_name, index),
+    })
+
+
+@bp.route("/api/material_image")
+def api_material_image():
+    project_name = request.args.get("project")
+    index = request.args.get("index", type=int)
+    k = request.args.get("mindex", type=int)
+    if not project_name or index is None or k is None:
+        return jsonify({"error": "project / index / mindex が必要です"}), 400
+    p = slides_svc.material_path(project_name, index, k)
     if not p.exists():
         return jsonify({"error": "not found"}), 404
     return send_file(str(p), mimetype="image/png")

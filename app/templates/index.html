@@ -66,6 +66,20 @@
   .fix-row { display: flex; gap: 6px; margin-top: 8px; }
   .fix-row input { flex: 1; background: var(--panel); border: 1px solid var(--border);
     color: var(--text); border-radius: 6px; padding: 6px 8px; font-size: 12px; }
+  .mat-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+  .mat-thumb { position: relative; width: 56px; height: 56px; border-radius: 6px;
+    border: 1px solid var(--border); overflow: hidden; background: #000; flex-shrink: 0; }
+  .mat-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .mat-del { position: absolute; top: 1px; right: 1px; width: 16px; height: 16px; border: none;
+    border-radius: 4px; background: rgba(0,0,0,.65); color: #fff; font-size: 11px; line-height: 1;
+    cursor: pointer; padding: 0; }
+  .mat-del:hover { background: var(--danger); }
+  .mat-add { width: 56px; height: 56px; border-radius: 6px; border: 1px dashed var(--border);
+    background: transparent; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer;
+    flex-shrink: 0; }
+  .mat-add:hover { border-color: var(--accent); color: var(--accent); }
+  .mat-add:disabled { opacity: .4; cursor: not-allowed; }
+  .mat-hint { font-size: 11px; color: var(--muted); }
   .placeholder { color: var(--muted); text-align: center; padding: 40px 12px; font-size: 13px; }
   .empty-img { aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center;
     color: var(--muted); border: 1px dashed var(--border); border-radius: 6px; font-size: 12px; }
@@ -169,8 +183,10 @@
 <script>
 let current = null;       // 現在のプロジェクト名
 let plan = [];            // 構成案
+let materials = [];       // スライドごとの素材画像 k のリスト（plan と同じ長さ）
 let templates = {};
 let templatesWithRef = []; // デフォルト見本画像を持つテンプレート名
+const MAX_MATERIALS = 4;  // 1スライドあたりの素材上限（サーバと合わせる）
 
 function setStatus(t, busy) {
   document.getElementById('status').innerHTML = (busy ? '<span class="spin"></span> ' : '') + t;
@@ -215,6 +231,7 @@ async function selectProject(enc) {
     document.getElementById('btn-save').disabled = false;
     document.getElementById('editor-hint').textContent = name;
     plan = d.plan || [];
+    materials = d.materials || plan.map(() => []);
     renderSlides(d.generated || []);
     document.getElementById('btn-pptx').disabled = !d.pptx_exists && !(d.generated||[]).some(Boolean);
     document.getElementById('btn-regen-all').disabled = plan.length === 0;
@@ -234,7 +251,7 @@ async function deleteProject(enc) {
     });
     // 開いていたプロジェクトを消した場合はエディタ・プレビューをリセット
     if (current === name) {
-      current = null; plan = [];
+      current = null; plan = []; materials = [];
       const md = document.getElementById('md'); md.value = ''; md.disabled = true;
       const dp = document.getElementById('design-prompt'); dp.value = ''; dp.disabled = true;
       document.getElementById('editor-hint').textContent = 'プロジェクトを選択してください';
@@ -364,6 +381,7 @@ async function generateSlides() {
       body: JSON.stringify({ project: current, markdown: document.getElementById('md').value })
     });
     plan = d.plan;
+    materials = plan.map(() => []);
     renderSlides(plan.map(() => false));
     document.getElementById('btn-regen-all').disabled = false;
     // 各スライドを並列生成（同時実行数を制限）
@@ -437,12 +455,74 @@ function renderSlides(generated) {
       <div class="slide-head"><span class="slide-no">${i+1}</span>
         <span class="slide-title">${escHtml(s.title || '(無題)')}</span></div>
       ${imgInner}
+      <div class="mat-row" id="mat-row-${i}">${materialRowInner(i)}</div>
+      <input type="file" id="mat-file-${i}" accept="image/*" style="display:none"
+        onchange="onMaterialFile(${i}, this)">
       <div class="fix-row">
-        <input id="fix-${i}" placeholder="修正ポイント（例: 文字を大きく / 図を右に）">
+        <input id="fix-${i}" placeholder="修正ポイント（例: この素材を中心に / 文字を大きく）">
         <button class="btn btn-secondary" onclick="regenOne(${i})">再生成</button>
       </div>
     </div>`;
   }).join('');
+}
+
+// 1スライド分の素材サムネイル＋追加ボタンのHTML
+function materialRowInner(i) {
+  const mats = materials[i] || [];
+  const proj = encodeURIComponent(current);
+  const thumbs = mats.map(k =>
+    `<div class="mat-thumb">
+      <img src="/api/material_image?project=${proj}&index=${i}&mindex=${k}&t=${Date.now()}">
+      <button class="mat-del" title="削除" onclick="removeMaterial(${i}, ${k})">✕</button>
+    </div>`
+  ).join('');
+  const canAdd = mats.length < MAX_MATERIALS;
+  const addBtn = `<button class="mat-add" title="素材画像を追加" onclick="addMaterial(${i})"${canAdd ? '' : ' disabled'}>+</button>`;
+  const hint = mats.length
+    ? `<span class="mat-hint">素材を中心に再生成します</span>`
+    : `<span class="mat-hint">＋で素材画像を追加</span>`;
+  return thumbs + addBtn + hint;
+}
+
+// 素材行だけを再描画する
+function refreshMaterialRow(i) {
+  const row = document.getElementById('mat-row-' + i);
+  if (row) row.innerHTML = materialRowInner(i);
+}
+
+function addMaterial(i) {
+  const inp = document.getElementById('mat-file-' + i);
+  if (inp) { inp.value = ''; inp.click(); }
+}
+
+async function onMaterialFile(i, inp) {
+  const file = inp.files && inp.files[0];
+  if (!file || !current) return;
+  setStatus(`スライド${i+1} に素材を追加中…`, true);
+  try {
+    const fd = new FormData();
+    fd.append('project', current);
+    fd.append('index', i);
+    fd.append('file', file);
+    const d = await api('/api/upload_material', { method: 'POST', body: fd });
+    materials[i] = d.materials || materials[i] || [];
+    refreshMaterialRow(i);
+    setStatus('素材を追加しました');
+  } catch (e) { setStatus('素材追加失敗: ' + e.message); alert(e.message); }
+}
+
+async function removeMaterial(i, k) {
+  if (!current) return;
+  setStatus('素材を削除中…', true);
+  try {
+    const d = await api('/api/delete_material', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ project: current, index: i, mindex: k })
+    });
+    materials[i] = d.materials || [];
+    refreshMaterialRow(i);
+    setStatus('素材を削除しました');
+  } catch (e) { setStatus('素材削除失敗: ' + e.message); alert(e.message); }
 }
 
 async function buildPptx() {
