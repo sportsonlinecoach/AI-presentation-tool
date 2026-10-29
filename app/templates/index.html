@@ -43,6 +43,13 @@
   .proj:hover .proj-del { opacity: 1; }
   .proj-del:hover { background: var(--danger); color: #fff; }
   .toolbar { display: flex; gap: 8px; margin-bottom: 10px; align-items: center; }
+  .check { display: flex; align-items: center; gap: 4px; font-size: 12px; color: var(--muted);
+    cursor: pointer; user-select: none; white-space: nowrap; }
+  .check input { accent-color: var(--accent2); margin: 0; }
+  .import-row { display: flex; gap: 6px; margin-bottom: 10px; align-items: center; }
+  .import-row input#doc-url { flex: 1; min-width: 0; background: var(--panel2);
+    border: 1px solid var(--border); color: var(--text); border-radius: 8px;
+    padding: 7px 9px; font-size: 12px; }
   #pane-editor { display: flex; flex-direction: column; }
   textarea#md { width: 100%; flex: 1; min-height: 180px; resize: none; background: var(--panel2);
     color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 12px;
@@ -80,6 +87,22 @@
   .mat-add:hover { border-color: var(--accent); color: var(--accent); }
   .mat-add:disabled { opacity: .4; cursor: not-allowed; }
   .mat-hint { font-size: 11px; color: var(--muted); }
+  .doc-thumb { border-color: var(--accent2); }
+  .kw-row { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .kw { background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+    padding: 2px 8px; font-size: 11px; color: var(--text); }
+  .kw-illust { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+  /* 引用文献スライドに載る行（要約されないので全文をそのまま確認できるようにする） */
+  .ref-list { margin-top: 4px; max-height: 150px; overflow-y: auto; font-size: 11px;
+    line-height: 1.6; color: var(--text); background: var(--panel);
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; }
+  .ref-list div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* 特定に必要な項目が欠けている引用行と、デッキ全体への指摘 */
+  .ref-list div.ref-gap { white-space: normal; color: #e0a33e; }
+  .ref-gap-tag { margin-left: 6px; border: 1px solid #e0a33e; border-radius: 999px;
+    padding: 0 6px; font-size: 10px; }
+  .ref-banner { border: 1px solid #e0a33e; border-radius: 8px; background: rgba(224,163,62,.08);
+    color: #e0a33e; font-size: 12px; line-height: 1.6; padding: 8px 10px; margin-bottom: 12px; }
   .placeholder { color: var(--muted); text-align: center; padding: 40px 12px; font-size: 13px; }
   .empty-img { aspect-ratio: 16/9; display: flex; align-items: center; justify-content: center;
     color: var(--muted); border: 1px dashed var(--border); border-radius: 6px; font-size: 12px; }
@@ -100,6 +123,30 @@
     font-size: 13px; font-family: inherit; }
   .field textarea { min-height: 120px; resize: vertical; font-family: ui-monospace, monospace; }
   .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .tmpl-row { display: flex; gap: 6px; align-items: center; }
+  .tmpl-row select { flex: 1; min-width: 0; }
+  .tmpl-row .btn { flex-shrink: 0; }
+  /* ライブラリ由来の素材と、無効になった図解指示 */
+  .mat-thumb.lib-thumb { outline: 2px solid #3f8f7a; outline-offset: -2px; }
+  .kw-illust.kw-off { text-decoration: line-through; opacity: .55; }
+  .kw-off-tag { margin-left: 6px; text-decoration: none; display: inline-block;
+    color: #3f8f7a; border: 1px solid #3f8f7a; border-radius: 999px;
+    padding: 0 6px; font-size: 10px; }
+  /* 医用画像ライブラリのピッカー */
+  .lib-filters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+  .lib-filters input[type=text] { flex: 1; min-width: 140px; }
+  .lib-filters input[type=text], .lib-filters select { background: var(--panel2);
+    border: 1px solid var(--border); color: var(--text); border-radius: 8px; padding: 7px 9px;
+    font-size: 12px; font-family: inherit; }
+  .lib-check { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+  .lib-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .lib-item { border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+    background: var(--panel2); cursor: pointer; text-align: left; padding: 0; color: inherit;
+    font: inherit; display: flex; flex-direction: column; }
+  .lib-item:hover { border-color: var(--accent, #4a9eff); }
+  .lib-item img { width: 100%; aspect-ratio: 4/3; object-fit: contain; background: #fff; display: block; }
+  .lib-cap { padding: 6px 7px; font-size: 11px; line-height: 1.4; color: var(--text); }
+  .lib-cap .lib-warn { color: #e0a33e; }
   .spin { display: inline-block; width: 13px; height: 13px; border: 2px solid var(--muted);
     border-top-color: transparent; border-radius: 50%; animation: s .7s linear infinite; vertical-align: -2px; }
   @keyframes s { to { transform: rotate(360deg); } }
@@ -125,13 +172,22 @@
     <div class="toolbar">
       <button id="btn-gen" class="btn btn-primary" onclick="generateSlides()" disabled>スライド生成</button>
       <button id="btn-save" class="btn btn-secondary" onclick="saveMarkdown()" disabled>保存</button>
+      <label class="check" title="長い本文をキーワードに絞ってスライドに載せます">
+        <input type="checkbox" id="chk-condense" checked disabled>キーワードに要約
+      </label>
       <span class="hint" id="editor-hint">プロジェクトを選択してください</span>
+    </div>
+    <div class="import-row">
+      <input id="doc-url" placeholder="Google ドキュメントの URL を貼って取り込み" disabled>
+      <button id="btn-import" class="btn btn-secondary" onclick="importDoc()" disabled>取り込み</button>
+      <button id="btn-import-file" class="btn btn-ghost" onclick="pickDocx()" title="Word (.docx) から取り込み" disabled>.docx</button>
+      <input type="file" id="docx-file" accept=".docx" style="display:none" onchange="onDocxFile(this)">
     </div>
     <details class="prompt-box">
       <summary>デザインプロンプト（配色・トーンの指示）</summary>
       <textarea id="design-prompt" placeholder="プロジェクトを選択すると表示されます" disabled></textarea>
     </details>
-    <textarea id="md" placeholder="# 見出し1ごとに1スライド&#10;## 見出し2、### 見出し3 も1スライド&#10;- 箇条書きや本文は直近スライドにまとまります" disabled></textarea>
+    <textarea id="md" placeholder="# 見出し1ごとに1スライド&#10;## 見出し2、### 見出し3 も1スライド&#10;- 箇条書きや本文は直近スライドにまとまります&#10;&#10;![](_doc/img_000.png) ← 取り込んだ画像はこの形で参照されます&#10;&#10;# 引用文献 ← 最後は必ずこの見出しで一次ソースを列挙（どこに書いても末尾に回ります）&#10;1／R. L. Diercks, M. Stevens, J. Shoulder Elbow Surg. 13, 499–502 (2004)." disabled></textarea>
   </div>
 
   <!-- ペイン3: プレビュー -->
@@ -140,7 +196,11 @@
     <div class="toolbar">
       <button id="btn-regen-all" class="btn btn-secondary" onclick="regenerateAll()" disabled>一括再生成</button>
       <button id="btn-pptx" class="btn btn-primary" onclick="buildPptx()" disabled>PPTX 書き出し</button>
+      <label title="各スライドのノート欄に、そのスライドの元になった台本をそのまま入れます">
+        <input type="checkbox" id="chk-pptx-notes" checked disabled>ノートに台本を入れる
+      </label>
     </div>
+    <div id="ref-banner"></div>
     <div id="slides"><div class="placeholder">「スライド生成」を押すとここに表示されます</div></div>
   </div>
 </div>
@@ -155,13 +215,35 @@
         <input id="c-name" placeholder="プロジェクト1">
       </div>
       <div class="field">
-        <label>スライドの元になる Markdown</label>
+        <label>Google ドキュメントの URL（推奨・貼るだけで取り込みます）</label>
+        <input id="c-doc-url" placeholder="https://docs.google.com/document/d/.../edit">
+        <div class="hint">
+          見出し1〜3・本文・箇条書き・ドキュメント内の画像を読み取り、
+          見出しごとに1スライドへ変換します。<br>
+          共有設定を「リンクを知っている全員（閲覧者）」にしておいてください。
+        </div>
+      </div>
+      <div class="field">
+        <label>または Markdown を直接書く</label>
         <textarea id="c-md" placeholder="# タイトル&#10;## セクション1&#10;- ポイントA&#10;- ポイントB"></textarea>
       </div>
       <div class="field">
         <label>デザインプロンプト（雛形を選んで編集できます）</label>
-        <select id="c-tmpl" onchange="applyTemplate()"></select>
+        <div class="tmpl-row">
+          <select id="c-tmpl" onchange="applyTemplate()"></select>
+          <button class="btn btn-ghost" id="c-tmpl-del" style="display:none"
+            title="この自作テンプレートを削除" onclick="deleteTemplate()">削除</button>
+        </div>
         <textarea id="c-prompt" style="margin-top:8px;min-height:80px;"></textarea>
+        <div class="tmpl-row" style="margin-top:6px;">
+          <button class="btn btn-ghost" id="c-tmpl-save"
+            title="編集中のプロンプトを自作テンプレートとして保存"
+            onclick="savePromptAsTemplate()">これをテンプレートとする</button>
+        </div>
+        <div class="hint">
+          編集したプロンプトを次回以降も雛形として選べるように保存します。
+          見本デザイン画像は、下で画像を選べばそれを、選ばなければ上の雛形のものを引き継ぎます。
+        </div>
       </div>
       <div class="field">
         <label>見本デザイン画像（任意）</label>
@@ -180,18 +262,94 @@
   </div>
 </div>
 
+<!-- テンプレート保存モーダル -->
+<div class="overlay" id="tmpl-modal">
+  <div class="modal">
+    <div class="modal-head">このスライドをテンプレートとして保存</div>
+    <div class="modal-body">
+      <div class="field">
+        <label>見本デザイン画像になるスライド</label>
+        <img id="t-preview" style="width:100%;border-radius:8px;border:1px solid var(--border);display:block;">
+        <div class="hint">
+          次に新規プロジェクトを作るとき、このスライドの配色・レイアウトを
+          お手本にして生成できるようになります。
+        </div>
+      </div>
+      <div class="field">
+        <label>テンプレート名</label>
+        <input id="t-name" placeholder="例: セミナー用ネイビー">
+      </div>
+      <div class="field">
+        <label>デザインプロンプト（このプロジェクトの内容を引き継いでいます）</label>
+        <textarea id="t-prompt" style="min-height:140px;"></textarea>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeSaveTemplate()">キャンセル</button>
+      <button class="btn btn-primary" id="t-save" onclick="saveTemplate()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 購入済みの医用画像ライブラリから解剖図を素材として取り込む -->
+<div class="overlay" id="lib-modal">
+  <div class="modal" style="width: 860px;">
+    <div class="modal-head">解剖図をライブラリから選ぶ</div>
+    <div class="modal-body">
+      <div class="lib-filters">
+        <input type="text" id="lib-q" placeholder="キーワード（例: 腱板 断裂）"
+          onkeydown="if(event.key==='Enter')runLibSearch()">
+        <select id="lib-region" onchange="runLibSearch()"><option value="">部位すべて</option></select>
+        <select id="lib-category" onchange="runLibSearch()">
+          <option value="">種別すべて</option>
+          <option value="anatomy">解剖・生理</option>
+          <option value="pathology">疾患・外傷</option>
+          <option value="imaging">画像検査</option>
+          <option value="exercise">運動・姿勢</option>
+          <option value="treatment">治療・処置</option>
+          <option value="person">人物・シーン</option>
+          <option value="concept">概念図</option>
+          <option value="other">その他</option>
+        </select>
+        <label class="lib-check">
+          <input type="checkbox" id="lib-notext" checked onchange="runLibSearch()">画像内に文字なし
+        </label>
+        <button class="btn btn-secondary" onclick="runLibSearch()">検索</button>
+      </div>
+      <div class="hint" style="margin-bottom:10px;">
+        選ぶとそのスライドの素材画像として取り込まれます。生成AIは渡した画像を描き直すため、
+        図はそのままの形では残りません。細部の正確さが要る図は、書き出した PPTX 側で
+        差し替えてください。
+      </div>
+      <div id="lib-results" class="lib-grid"></div>
+      <div id="lib-empty" class="placeholder" style="display:none;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeLibPicker()">閉じる</button>
+    </div>
+  </div>
+</div>
+
 <script>
 let current = null;       // 現在のプロジェクト名
 let plan = [];            // 構成案
 let materials = [];       // スライドごとの素材画像 k のリスト（plan と同じ長さ）
+let libMaterials = [];    // そのうちライブラリ由来（解剖図）の k。図解の描き分けに使う
+let libraryAvailable = false;  // 医用画像ライブラリが参照できるか（起動時に1回だけ確認）
+let docImages = [];       // スライドごとの取り込み画像の相対パス（plan と同じ長さ）
+let refCheck = null;      // 最後のスライドが一次ソースの引用リストになっているかの判定
 let templates = {};
 let templatesWithRef = []; // デフォルト見本画像を持つテンプレート名
-const MAX_MATERIALS = 4;  // 1スライドあたりの素材上限（サーバと合わせる）
+let userTemplates = [];    // 自作テンプレート名（削除できるもの）
+// 1スライドに添付できる画像の上限（API仕様の16枚。サーバと合わせる）
+const MAX_ATTACHED_IMAGES = 16;
 
 function setStatus(t, busy) {
   document.getElementById('status').innerHTML = (busy ? '<span class="spin"></span> ' : '') + t;
 }
 function escHtml(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+// onclick 属性の中のシングルクォート文字列に値を埋めるとき用
+function escAttr(s) { return escHtml((s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'")); }
 
 async function api(url, opts) {
   const r = await fetch(url, opts);
@@ -227,11 +385,17 @@ async function selectProject(enc) {
     document.getElementById('md').disabled = false;
     document.getElementById('design-prompt').value = d.prompt || '';
     document.getElementById('design-prompt').disabled = false;
-    document.getElementById('btn-gen').disabled = false;
-    document.getElementById('btn-save').disabled = false;
+    document.getElementById('doc-url').value = (d.source && d.source.url) || '';
+    document.getElementById('chk-condense').checked = d.condense !== false;
+    document.getElementById('chk-pptx-notes').checked = d.pptx_notes !== false;
+    ['btn-gen','btn-save','btn-import','btn-import-file','chk-condense','chk-pptx-notes','doc-url']
+      .forEach(id => document.getElementById(id).disabled = false);
     document.getElementById('editor-hint').textContent = name;
     plan = d.plan || [];
     materials = d.materials || plan.map(() => []);
+    libMaterials = d.library_materials || plan.map(() => []);
+    docImages = d.doc_images || plan.map(() => []);
+    refCheck = d.reference_check || null;
     renderSlides(d.generated || []);
     document.getElementById('btn-pptx').disabled = !d.pptx_exists && !(d.generated||[]).some(Boolean);
     document.getElementById('btn-regen-all').disabled = plan.length === 0;
@@ -251,11 +415,14 @@ async function deleteProject(enc) {
     });
     // 開いていたプロジェクトを消した場合はエディタ・プレビューをリセット
     if (current === name) {
-      current = null; plan = []; materials = [];
+      current = null; plan = []; materials = []; libMaterials = []; docImages = []; refCheck = null;
+      renderReferenceCheck();
       const md = document.getElementById('md'); md.value = ''; md.disabled = true;
       const dp = document.getElementById('design-prompt'); dp.value = ''; dp.disabled = true;
+      document.getElementById('doc-url').value = '';
       document.getElementById('editor-hint').textContent = 'プロジェクトを選択してください';
-      ['btn-gen','btn-save','btn-regen-all','btn-pptx'].forEach(id => document.getElementById(id).disabled = true);
+      ['btn-gen','btn-save','btn-regen-all','btn-pptx','btn-import','btn-import-file',
+       'chk-condense','chk-pptx-notes','doc-url'].forEach(id => document.getElementById(id).disabled = true);
       document.getElementById('slides').innerHTML = '<div class="placeholder">「スライド生成」を押すとここに表示されます</div>';
     }
     setStatus(`「${name}」を削除しました`);
@@ -264,19 +431,31 @@ async function deleteProject(enc) {
 }
 
 // ---- 新規作成 ----
+// テンプレート一覧を読み込んでプルダウンを組み直す。
+// 選択中のテンプレートが残っていればその選択を保つ。
+async function loadTemplates() {
+  const t = await api('/api/prompt_templates');
+  templates = t.templates;
+  templatesWithRef = t.with_reference || [];
+  userTemplates = t.user || [];
+
+  const sel = document.getElementById('c-tmpl');
+  const keep = sel.value;
+  const names = Object.keys(templates);
+  sel.innerHTML = names.map(k =>
+    `<option value="${escHtml(k)}">${escHtml(k)}${userTemplates.includes(k) ? '（自作）' : ''}</option>`
+  ).join('');
+  sel.value = names.includes(keep) ? keep : names[0];
+  applyTemplate();
+}
+
 async function openCreate() {
   document.getElementById('create-modal').classList.add('show');
   try {
-    const t = await api('/api/prompt_templates');
-    templates = t.templates;
-    templatesWithRef = t.with_reference || [];
-    const sel = document.getElementById('c-tmpl');
-    sel.innerHTML = Object.keys(templates).map(k => `<option value="${escHtml(k)}">${escHtml(k)}</option>`).join('');
-    const first = Object.keys(templates)[0];
-    sel.value = first;
-    document.getElementById('c-prompt').value = templates[first] || t.default;
+    await loadTemplates();
+    document.getElementById('c-doc-url').value = '';
+    document.getElementById('c-md').value = '';
     document.getElementById('c-ref').value = '';
-    updateRefPreview();
     const n = await api('/api/suggest_name');
     document.getElementById('c-name').placeholder = n.name;
     document.getElementById('c-name').value = n.name;
@@ -286,7 +465,131 @@ function closeCreate() { document.getElementById('create-modal').classList.remov
 function applyTemplate() {
   const k = document.getElementById('c-tmpl').value;
   document.getElementById('c-prompt').value = templates[k] || '';
+  // 削除ボタンは自作テンプレートのときだけ出す（組み込みは消せない）
+  document.getElementById('c-tmpl-del').style.display =
+    userTemplates.includes(k) ? '' : 'none';
   updateRefPreview();
+}
+
+// 新規作成モーダルで編集したプロンプトを、そのまま自作テンプレートとして保存する。
+// 見本デザイン画像は、添付済みファイル → 元の雛形の見本画像 の順でサーバ側が引き継ぐ。
+async function savePromptAsTemplate() {
+  const base = document.getElementById('c-tmpl').value;
+  const prompt = document.getElementById('c-prompt').value;
+  if (!prompt.trim()) { alert('デザインプロンプトが空です。'); return; }
+
+  // 自作テンプレートを編集した場合はそのまま上書きしやすいよう同名を初期値にする
+  const suggested = userTemplates.includes(base) ? base : base + ' 改';
+  const name = (window.prompt('テンプレート名を入力してください', suggested) || '').trim();
+  if (!name) return;
+
+  const btn = document.getElementById('c-tmpl-save');
+  btn.disabled = true;
+  setStatus('テンプレートを保存中…', true);
+  try {
+    const send = (overwrite) => {
+      const fd = new FormData();
+      fd.append('name', name);
+      fd.append('prompt', prompt);
+      fd.append('base', base);
+      if (overwrite) fd.append('overwrite', '1');
+      const f = document.getElementById('c-ref').files[0];
+      if (f) fd.append('file', f);
+      return fetch('/api/save_prompt_template', { method: 'POST', body: fd });
+    };
+
+    let r = await send(false);
+    let d = await r.json().catch(() => ({}));
+    if (r.status === 409 && d.exists) {
+      if (!confirm(`テンプレート「${name}」は既にあります。上書きしますか？`)) {
+        setStatus('保存をキャンセルしました');
+        return;
+      }
+      r = await send(true);
+      d = await r.json().catch(() => ({}));
+    }
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+
+    // 保存したテンプレートを選択状態にして、そのまま作成に進めるようにする
+    await loadTemplates();
+    const sel = document.getElementById('c-tmpl');
+    if (templates[name] !== undefined) { sel.value = name; applyTemplate(); }
+    setStatus(d.message || 'テンプレートを保存しました');
+  } catch (e) { setStatus('テンプレート保存失敗'); alert(e.message); }
+  finally { btn.disabled = false; }
+}
+
+// ---- テンプレート保存・削除 ----
+let templateSlideIndex = null;  // テンプレートの元にするスライド番号
+
+function openSaveTemplate(i) {
+  if (!current) return;
+  const img = document.getElementById('img-' + i);
+  if (!img || img.tagName !== 'IMG') {
+    alert('先にこのスライドを生成してください。生成済みのスライドを見本画像として登録します。');
+    return;
+  }
+  templateSlideIndex = i;
+  document.getElementById('t-preview').src = img.src;
+  document.getElementById('t-name').value = current;
+  document.getElementById('t-prompt').value = document.getElementById('design-prompt').value;
+  document.getElementById('tmpl-modal').classList.add('show');
+}
+
+function closeSaveTemplate() {
+  document.getElementById('tmpl-modal').classList.remove('show');
+  templateSlideIndex = null;
+}
+
+async function saveTemplate() {
+  if (!current || templateSlideIndex === null) return;
+  const name = document.getElementById('t-name').value.trim();
+  const prompt = document.getElementById('t-prompt').value;
+  if (!name) { alert('テンプレート名を入力してください。'); return; }
+
+  const btn = document.getElementById('t-save');
+  btn.disabled = true;
+  setStatus('テンプレートを保存中…', true);
+  try {
+    const body = { project: current, index: templateSlideIndex, name, prompt };
+    let r = await fetch('/api/save_template', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    let d = await r.json().catch(() => ({}));
+    // 同名がある場合だけ、上書き確認をしてから再送する
+    if (r.status === 409 && d.exists) {
+      if (!confirm(`テンプレート「${name}」は既にあります。上書きしますか？`)) {
+        setStatus('保存をキャンセルしました');
+        return;
+      }
+      r = await fetch('/api/save_template', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ ...body, overwrite: true })
+      });
+      d = await r.json().catch(() => ({}));
+    }
+    if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+    closeSaveTemplate();
+    setStatus(d.message || 'テンプレートを保存しました');
+  } catch (e) { setStatus('テンプレート保存失敗'); alert(e.message); }
+  finally { btn.disabled = false; }
+}
+
+async function deleteTemplate() {
+  const name = document.getElementById('c-tmpl').value;
+  if (!userTemplates.includes(name)) return;
+  if (!confirm(`自作テンプレート「${name}」を削除します。よろしいですか？\n`
+    + '（このテンプレートで作った既存プロジェクトには影響しません）')) return;
+  setStatus('テンプレートを削除中…', true);
+  try {
+    await api('/api/delete_template', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ name })
+    });
+    setStatus(`テンプレート「${name}」を削除しました`);
+    await loadTemplates();
+  } catch (e) { setStatus('テンプレート削除失敗'); alert(e.message); }
 }
 function updateRefPreview() {
   const k = document.getElementById('c-tmpl').value;
@@ -305,12 +608,17 @@ async function createProject() {
   const markdown = document.getElementById('c-md').value;
   const prompt = document.getElementById('c-prompt').value;
   const template = document.getElementById('c-tmpl').value;
+  const docUrl = document.getElementById('c-doc-url').value.trim();
+  if (!docUrl && !markdown.trim()) {
+    alert('Google ドキュメントの URL か Markdown のどちらかを入力してください。');
+    return;
+  }
   document.getElementById('c-save').disabled = true;
-  setStatus('作成中…', true);
+  setStatus(docUrl ? 'ドキュメントを取り込み中…' : '作成中…', true);
   try {
     const d = await api('/api/create_project', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ name, markdown, prompt, template })
+      body: JSON.stringify({ name, markdown, prompt, template, doc_url: docUrl })
     });
     // 見本画像アップロード（任意）
     const f = document.getElementById('c-ref').files[0];
@@ -321,8 +629,99 @@ async function createProject() {
     closeCreate();
     await loadProjects();
     await selectProject(encodeURIComponent(d.project));
+    if (d.import_error) {
+      setStatus('ドキュメントの取り込みに失敗しました');
+      alert('プロジェクトは作成しましたが、ドキュメントを取り込めませんでした。\n\n' + d.import_error);
+    } else if (d.imported) {
+      setStatus(`取り込み完了（見出し ${d.imported.headings}件 / 画像 ${d.imported.images}枚）`);
+      if (d.imported.warning) alert(d.imported.warning);
+    }
   } catch (e) { setStatus('作成失敗: ' + e.message); alert(e.message); }
   finally { document.getElementById('c-save').disabled = false; }
+}
+
+// ---- ドキュメント取り込み ----
+// 台本や生成済みスライドを上書きする前の確認。中身が空なら何も聞かない。
+function confirmReplace(sourceLabel) {
+  const hasMd = document.getElementById('md').value.trim();
+  if (!hasMd) return true;
+  return confirm(
+    `現在の台本を${sourceLabel}の内容で置き換えます。\n`
+    + '生成済みのスライド画像も破棄され、作り直しになります。\n\nよろしいですか？'
+  );
+}
+
+function setImportBusy(busy) {
+  ['btn-import','btn-import-file'].forEach(id => document.getElementById(id).disabled = busy);
+}
+
+// 取り込み結果をエディタとプレビューに反映する
+async function applyImport(d) {
+  document.getElementById('md').value = d.markdown || '';
+  setStatus(d.message || '取り込み完了');
+  if (d.warning) { alert(d.warning); return; }
+  // 画像の割り当てが変わるので構成案を作り直す（画像生成はまだ走らせない）
+  await refreshPlan();
+}
+
+async function importDoc() {
+  if (!current) return;
+  const url = document.getElementById('doc-url').value.trim();
+  if (!url) { alert('Google ドキュメントの URL を入力してください。'); return; }
+  if (!confirmReplace('ドキュメント')) return;
+  setImportBusy(true);
+  setStatus('ドキュメントを取り込み中…', true);
+  try {
+    const d = await api('/api/import_document', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ project: current, url })
+    });
+    await applyImport(d);
+  } catch (e) { setStatus('取り込み失敗'); alert(e.message); }
+  finally { setImportBusy(false); }
+}
+
+function pickDocx() {
+  const inp = document.getElementById('docx-file');
+  if (inp) { inp.value = ''; inp.click(); }
+}
+
+async function onDocxFile(inp) {
+  const file = inp.files && inp.files[0];
+  if (!file || !current) return;
+  if (!confirmReplace('.docx')) return;
+  setImportBusy(true);
+  setStatus('.docx を取り込み中…', true);
+  try {
+    const fd = new FormData();
+    fd.append('project', current);
+    fd.append('file', file);
+    await applyImport(await api('/api/import_document', { method: 'POST', body: fd }));
+  } catch (e) { setStatus('取り込み失敗'); alert(e.message); }
+  finally { setImportBusy(false); }
+}
+
+// 構成案だけを作り直す（画像生成はしない）
+async function refreshPlan() {
+  const condense = document.getElementById('chk-condense').checked;
+  setStatus(condense ? '構成案を作成中（本文を要約中）…' : '構成案を作成中…', true);
+  const d = await api('/api/slide_plan', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      project: current,
+      markdown: document.getElementById('md').value,
+      condense,
+    })
+  });
+  plan = d.plan;
+  materials = plan.map((_, i) => materials[i] || []);
+  libMaterials = plan.map(s => Object.keys(s.library_images || {}).map(Number).sort((a,b) => a-b));
+  docImages = plan.map(s => (s.images || []));
+  refCheck = d.reference_check || null;
+  renderSlides(plan.map((_, i) => false));
+  document.getElementById('btn-regen-all').disabled = plan.length === 0;
+  if (d.warning) setStatus(d.warning);
+  return d;
 }
 
 // ---- 保存・生成 ----
@@ -371,19 +770,11 @@ async function saveEditor() {
 
 async function generateSlides() {
   if (!current) return;
-  setStatus('構成案を作成中…', true);
   document.getElementById('btn-gen').disabled = true;
   try {
     // 編集中の Markdown・デザインプロンプトを保存してから生成
     await saveEditor();
-    const d = await api('/api/slide_plan', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ project: current, markdown: document.getElementById('md').value })
-    });
-    plan = d.plan;
-    materials = plan.map(() => []);
-    renderSlides(plan.map(() => false));
-    document.getElementById('btn-regen-all').disabled = false;
+    await refreshPlan();
     // 各スライドを並列生成（同時実行数を制限）
     const idxs = plan.map((_, i) => i);
     const errors = await runPool(idxs, (i) => genOne(i, ''), GEN_CONCURRENCY,
@@ -444,7 +835,17 @@ async function regenerateAll() {
   finally { document.getElementById('btn-regen-all').disabled = false; }
 }
 
+// 「最後のスライドは一次ソースの引用リスト」が守れているかを常に見える形で出す。
+// ここを黙って通すと、よく分からないまとめスライドで終わった構成に気づけない。
+function renderReferenceCheck() {
+  const box = document.getElementById('ref-banner');
+  if (!box) return;
+  if (!refCheck || refCheck.ok) { box.innerHTML = ''; return; }
+  box.innerHTML = `<div class="ref-banner">${escHtml(refCheck.message)}</div>`;
+}
+
 function renderSlides(generated) {
+  renderReferenceCheck();
   const box = document.getElementById('slides');
   if (!plan.length) { box.innerHTML = '<div class="placeholder">「スライド生成」を押すとここに表示されます</div>'; return; }
   box.innerHTML = plan.map((s, i) => {
@@ -455,33 +856,99 @@ function renderSlides(generated) {
       <div class="slide-head"><span class="slide-no">${i+1}</span>
         <span class="slide-title">${escHtml(s.title || '(無題)')}</span></div>
       ${imgInner}
+      ${keywordRowInner(s, i)}
       <div class="mat-row" id="mat-row-${i}">${materialRowInner(i)}</div>
       <input type="file" id="mat-file-${i}" accept="image/*" style="display:none"
         onchange="onMaterialFile(${i}, this)">
       <div class="fix-row">
         <input id="fix-${i}" placeholder="修正ポイント（例: この素材を中心に / 文字を大きく）">
         <button class="btn btn-secondary" onclick="regenOne(${i})">再生成</button>
+        <button class="btn btn-ghost" title="このスライドの見た目をテンプレートとして保存"
+          onclick="openSaveTemplate(${i})">テンプレ保存</button>
       </div>
     </div>`;
   }).join('');
 }
 
-// 1スライド分の素材サムネイル＋追加ボタンのHTML
+// スライドに描かれるキーワード（要約結果）・図解指示・画像の文脈メモの表示
+function keywordRowInner(s, i) {
+  // 引用文献スライドは要約せずそのまま並べる。何が載るかを全行そのまま見せ、
+  // 論文を特定できない行は足りない項目を名指しする（補うのは台本側の仕事）。
+  const refs = s.references || [];
+  if (refs.length) {
+    const gaps = s.reference_gaps || [];
+    return `<div class="kw-illust">引用文献: 要約せず${refs.length}件をそのまま列挙します</div>`
+      + `<div class="ref-list">`
+      + refs.map((r, k) => {
+          const missing = gaps[k] || [];
+          if (!missing.length) return `<div>${escHtml(r)}</div>`;
+          return `<div class="ref-gap">${escHtml(r)}`
+            + `<span class="ref-gap-tag">${escHtml(missing.join('・'))}が不明</span></div>`;
+        }).join('')
+      + `</div>`;
+  }
+  const kws = s.keywords || [];
+  const illust = s.illustration || '';
+  const notes = (s.image_notes || []).filter(n => n && n.trim());
+  if (!kws.length && !illust && !notes.length) return '';
+  const chips = kws.map(k => `<span class="kw">${escHtml(k)}</span>`).join('');
+  // 解剖図を割り当てたスライドではこの図解指示を使わない。見え方でそれを示す
+  const illustOff = (libMaterials[i] || []).length > 0;
+  const illustNote = illust
+    ? `<div class="kw-illust${illustOff ? ' kw-off' : ''}">図解: ${escHtml(illust)}`
+      + (illustOff ? '<span class="kw-off-tag">解剖図に差し替え済み</span>' : '') + '</div>'
+    : '';
+  const imgNotes = notes.map((n, k) =>
+    `<div class="kw-illust">画像${k+1}: ${escHtml(n)}</div>`).join('');
+  return (chips ? `<div class="kw-row">${chips}</div>` : '') + illustNote + imgNotes;
+}
+
+// 1スライド分の画像サムネイル（取り込み画像＋素材画像）と追加ボタンのHTML
 function materialRowInner(i) {
-  const mats = materials[i] || [];
   const proj = encodeURIComponent(current);
-  const thumbs = mats.map(k =>
-    `<div class="mat-thumb">
-      <img src="/api/material_image?project=${proj}&index=${i}&mindex=${k}&t=${Date.now()}">
-      <button class="mat-del" title="削除" onclick="removeMaterial(${i}, ${k})">✕</button>
+  // ドキュメントから取り込んだ画像。Markdown 側が正なのでここでは消さず、表示のみ。
+  const docs = (docImages[i] || []).map(p =>
+    `<div class="mat-thumb doc-thumb" title="ドキュメントの画像: ${escHtml(p)}">
+      <img src="/api/doc_image?project=${proj}&path=${encodeURIComponent(p)}&t=${Date.now()}">
     </div>`
   ).join('');
-  const canAdd = mats.length < MAX_MATERIALS;
+
+  const mats = materials[i] || [];
+  const libs = libMaterials[i] || [];
+  const thumbs = mats.map(k => {
+    const isLib = libs.includes(k);
+    const title = isLib
+      ? 'ライブラリの解剖図。このスライドの図解として使い、AIには別の図を描かせない'
+      : '素材画像';
+    return `<div class="mat-thumb${isLib ? ' lib-thumb' : ''}" title="${title}">
+      <img src="/api/material_image?project=${proj}&index=${i}&mindex=${k}&t=${Date.now()}">
+      <button class="mat-del" title="削除" onclick="removeMaterial(${i}, ${k})">✕</button>
+    </div>`;
+  }).join('');
+  const docCount = (docImages[i] || []).length;
+  const total = docCount + mats.length;
+  const canAdd = total < MAX_ATTACHED_IMAGES;
   const addBtn = `<button class="mat-add" title="素材画像を追加" onclick="addMaterial(${i})"${canAdd ? '' : ' disabled'}>+</button>`;
-  const hint = mats.length
-    ? `<span class="mat-hint">素材を中心に再生成します</span>`
-    : `<span class="mat-hint">＋で素材画像を追加</span>`;
-  return thumbs + addBtn + hint;
+  // 購入済みの解剖図から選ぶ入口。ライブラリが無い環境では出さない。
+  const libBtn = libraryAvailable
+    ? `<button class="mat-add" title="解剖図をライブラリから選ぶ" onclick="openLibPicker(${i})"${canAdd ? '' : ' disabled'}>図</button>`
+    : '';
+  let hint;
+  if (total > MAX_ATTACHED_IMAGES) {
+    hint = `<span class="mat-hint">画像は1スライド${MAX_ATTACHED_IMAGES}枚までです`
+      + `（${total}枚あります）</span>`;
+  } else if (libs.length) {
+    // 図解指示を差し替えている旨を出す。生成結果が変わる設定なので明示する
+    hint = `<span class="mat-hint">${total}枚を大きく使い、<b>AIの図解は描かせません</b>`
+      + `（解剖図${libs.length}枚が図解の代わり）</span>`;
+  } else if (total) {
+    hint = `<span class="mat-hint">${total}枚を切り取らず大きく使って生成します</span>`;
+  } else {
+    hint = libraryAvailable
+      ? `<span class="mat-hint">＋で素材画像を追加、図で解剖図を選ぶ</span>`
+      : `<span class="mat-hint">＋で素材画像を追加</span>`;
+  }
+  return docs + thumbs + addBtn + libBtn + hint;
 }
 
 // 素材行だけを再描画する
@@ -520,27 +987,121 @@ async function removeMaterial(i, k) {
       body: JSON.stringify({ project: current, index: i, mindex: k })
     });
     materials[i] = d.materials || [];
+    libMaterials[i] = d.library_materials || [];
     refreshMaterialRow(i);
     setStatus('素材を削除しました');
   } catch (e) { setStatus('素材削除失敗: ' + e.message); alert(e.message); }
 }
 
+// ===== 医用画像ライブラリから解剖図を取り込む =====
+// 選んだ図は素材画像としてプロジェクトにコピーされるので、以降は
+// アップロードした素材と区別なく扱える（削除も生成時の添付も同じ経路）。
+let libPicker = { index: null, regionsLoaded: false };
+
+async function initLibrary() {
+  try {
+    const d = await api('/api/medical_library_status');
+    libraryAvailable = !!d.available;
+    if (libraryAvailable) libPicker.regions = d.regions || [];
+  } catch (e) { libraryAvailable = false; }
+}
+
+async function openLibPicker(i) {
+  if (!current) return;
+  libPicker.index = i;
+  document.getElementById('lib-modal').classList.add('show');
+
+  if (!libPicker.regionsLoaded) {
+    const sel = document.getElementById('lib-region');
+    for (const r of (libPicker.regions || [])) {
+      const o = document.createElement('option');
+      o.value = r.value; o.textContent = `${r.label} (${r.count})`;
+      sel.appendChild(o);
+    }
+    libPicker.regionsLoaded = true;
+  }
+  runLibSearch();
+}
+
+function closeLibPicker() {
+  document.getElementById('lib-modal').classList.remove('show');
+  libPicker.index = null;
+}
+
+async function runLibSearch() {
+  const results = document.getElementById('lib-results');
+  const empty = document.getElementById('lib-empty');
+  const p = new URLSearchParams({
+    q: document.getElementById('lib-q').value.trim(),
+    region: document.getElementById('lib-region').value,
+    category: document.getElementById('lib-category').value,
+  });
+  // 画像内に焼き込まれた英語ラベルは日本語スライドで浮くため、既定で除く
+  if (document.getElementById('lib-notext').checked) p.set('text_in_image', 'none');
+
+  results.innerHTML = ''; empty.style.display = 'none';
+  try {
+    const d = await api('/api/medical_images?' + p.toString());
+    const imgs = d.images || [];
+    if (!imgs.length) {
+      empty.textContent = '該当する画像がありません';
+      empty.style.display = 'block';
+      return;
+    }
+    results.innerHTML = imgs.map(e => {
+      const src = '/api/medical_image_file?path=' + encodeURIComponent(e.path);
+      const warn = e.text_in_image && e.text_in_image !== 'none'
+        ? `<span class="lib-warn">画像内に文字あり</span> ` : '';
+      return `<button class="lib-item" onclick="addMaterialFromLibrary('${escAttr(e.path)}')">
+        <img src="${src}" loading="lazy">
+        <span class="lib-cap">${warn}${escHtml(e.title || e.path)}</span>
+      </button>`;
+    }).join('');
+  } catch (e) {
+    empty.textContent = '検索に失敗しました: ' + e.message;
+    empty.style.display = 'block';
+  }
+}
+
+async function addMaterialFromLibrary(path) {
+  const i = libPicker.index;
+  if (i === null || !current) return;
+  setStatus(`スライド${i+1} に解剖図を取り込み中…`, true);
+  try {
+    const d = await api('/api/add_material_from_library', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ project: current, index: i, path })
+    });
+    materials[i] = d.materials || materials[i] || [];
+    libMaterials[i] = d.library_materials || libMaterials[i] || [];
+    refreshMaterialRow(i);
+    closeLibPicker();
+    setStatus('解剖図を割り当てました。再生成するとAIの図解は描かれません');
+  } catch (e) { setStatus('取り込み失敗: ' + e.message); alert(e.message); }
+}
+
 async function buildPptx() {
   if (!current) return;
+  // 引用リストが欠けたまま書き出すのは事故なので、必ず一度止めて確認させる
+  if (refCheck && !refCheck.ok
+      && !confirm(refCheck.message + '\n\nこのまま書き出しますか？')) return;
   setStatus('PPTX 作成中…', true);
   document.getElementById('btn-pptx').disabled = true;
   try {
     const d = await api('/api/build_pptx', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ project: current })
+      body: JSON.stringify({
+        project: current,
+        notes: document.getElementById('chk-pptx-notes').checked,
+      })
     });
-    setStatus('PPTX を保存しました');
+    setStatus(d.message || 'PPTX を保存しました');
     window.location = d.download_url;
   } catch (e) { setStatus('PPTX失敗: ' + e.message); alert(e.message); }
   finally { document.getElementById('btn-pptx').disabled = false; }
 }
 
-loadProjects();
+initLibrary().then(loadProjects);
 </script>
 </body>
 </html>
